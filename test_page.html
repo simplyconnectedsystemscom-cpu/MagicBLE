@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic Shop Test Page</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .product-card {
+            border: 2px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .product-card:active {
+            background: #eef;
+            transform: scale(0.98);
+        }
+
+        .product-title {
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: orange;
+            color: white;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Simulation Store</h1>
+    <p>Click items below to test the Spy -> Hub connection.</p>
+
+    <div class="grid">
+        <div class="product-card" data-id="101">
+            <div class="product-title">Magic Wand</div>
+            <p>$49.99</p>
+            <div class="btn">Add to Cart</div>
+        </div>
+
+        <div class="product-card" data-id="102">
+            <div class="product-title">Invisibility Cloak</div>
+            <p>$999.99</p>
+            <div class="btn">Add to Cart</div>
+        </div>
+
+        <div class="product-card" data-id="103">
+            <div class="product-title">Potion of Flight</div>
+            <p>$15.50</p>
+            <div class="btn">Add to Cart</div>
+        </div>
+
+        <div class="product-card" data-id="104">
+            <div class="product-title">Dragon Egg</div>
+            <p>$5000.00</p>
+            <div class="btn">Add to Cart</div>
+        </div>
+    </div>
+</body>
+
+</html>
