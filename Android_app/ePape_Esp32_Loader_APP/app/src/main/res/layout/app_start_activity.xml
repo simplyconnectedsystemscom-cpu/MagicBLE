@@ -17,6 +17,13 @@
             android:text="@string/no_blue"/>
         <View
             style="@style/sepL"/>
+            
+        <Button
+            style="@style/btn"
+            android:text="@string/brws"
+            android:onClick="onBrowser"/>
+        <View
+            style="@style/sepL"/>
 
         <Button
             android:id= "@+id/Button_disp"

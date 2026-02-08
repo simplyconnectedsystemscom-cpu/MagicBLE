@@ -93,18 +93,11 @@ public class AppStartActivity extends AppCompatActivity
             getSupportActionBar().setTitle("e-Paper Loader v3.0 - V4 Support");
         }
 
-        // Image file name (null by default)
-        //-----------------------------------------------------
-        fileName = null;
-
-
-
-        // Image file path (external storage root by default)
-        //-----------------------------------------------------
-        filePath = Environment.getExternalStorageDirectory().getAbsolutePath();
-
+        // Initialize state only if fresh start
+        if (fileName == null) fileName = null;
+        if (filePath == null) filePath = Environment.getExternalStorageDirectory().getAbsolutePath();
+        
         // Views
-        //-----------------------------------------------------
         textBlue = findViewById(R.id.text_blue);
         textLoad = findViewById(R.id.text_file);
         textDisp = findViewById(R.id.text_disp);
@@ -114,11 +107,37 @@ public class AppStartActivity extends AppCompatActivity
         pictFile = findViewById(R.id.pict_file);
         pictFilt = findViewById(R.id.pict_filt);
         button_file = findViewById(R.id.Button_file);
-        // Data
-        //-----------------------------
-        originalImage = null;
-        indTableImage = null;
-        button_file.setEnabled(false);
+        
+        // Restore UI state from static variables or SharedPreferences
+        if (btDevice == null) {
+            String savedAddr = getPreferences(MODE_PRIVATE).getString("BT_ADDR", null);
+            if (savedAddr != null) {
+                try {
+                    android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+                    if (adapter != null && adapter.isEnabled()) {
+                        btDevice = adapter.getRemoteDevice(savedAddr);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        if (btDevice != null) {
+            textBlue.setText(btDevice.getName() + " (" + btDevice.getAddress() + ")");
+        }
+        
+        // Load saved display index if not already set (e.g. static memory)
+        if (EPaperDisplay.epdInd == -1) {
+            EPaperDisplay.epdInd = getPreferences(MODE_PRIVATE).getInt("EPD_IND", -1);
+        }
+        
+        if (EPaperDisplay.epdInd != -1) {
+            textDisp.setText(EPaperDisplay.getDisplays()[EPaperDisplay.epdInd].title);
+            button_file.setEnabled(true);
+        } else {
+            button_file.setEnabled(false);
+        }
 
     }
 
@@ -129,6 +148,14 @@ public class AppStartActivity extends AppCompatActivity
         startActivityForResult(
             new Intent(this, ScanningActivity.class),
             REQ_BLUETOOTH_CONNECTION);
+    }
+    
+    public void onBrowser(View view) {
+        Intent intent = new Intent(this, BrowserActivity.class);
+        if (btDevice != null) {
+            intent.putExtra("BT_DEVICE", btDevice);
+        }
+        startActivity(intent);
     }
 
     public void onLoad(View view)
@@ -202,6 +229,9 @@ public class AppStartActivity extends AppCompatActivity
                 // Show name and address of the device
                 //---------------------------------------------
                 textBlue.setText(btDevice.getName() + " (" + btDevice.getAddress() + ")");
+                
+                // Save selection
+                getPreferences(MODE_PRIVATE).edit().putString("BT_ADDR", btDevice.getAddress()).apply();
             }
         }
 
@@ -246,6 +276,9 @@ public class AppStartActivity extends AppCompatActivity
             if (resultCode == RESULT_OK) {
                 textDisp.setText(EPaperDisplay.getDisplays()[EPaperDisplay.epdInd].title);
                 button_file.setEnabled(true);
+                
+                // Save selection
+                getPreferences(MODE_PRIVATE).edit().putInt("EPD_IND", EPaperDisplay.epdInd).apply();
             }
         }
 

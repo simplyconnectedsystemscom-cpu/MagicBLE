@@ -138,6 +138,17 @@ public class UploadActivity extends AppCompatActivity
             buffInd = 2;                             // Size of command in bytes
             buffArr[0] = (byte)'I';                  // Name of command (Initialize)
             buffArr[1] = (byte)EPaperDisplay.epdInd; // Index of display
+            
+            handleUserInterfaceMessage("Sent Init (" + EPaperDisplay.epdInd + ")... Wait");
+
+            // Timeout Check
+            final int currentStage = stInd;
+            postDelayed(() -> {
+                if (stInd == currentStage) {
+                    // Still stuck?
+                    handleUserInterfaceMessage("Timeout! ESP32 not replying 'Ok!'. Try Resetting Device.");
+                }
+            }, 5000);
 
             return u_send(false);
         }
@@ -446,7 +457,11 @@ public class UploadActivity extends AppCompatActivity
 
         public UserInterfaceHandler(String msg)
         {
-            this.msg = "Uploading: " + msg + "%";
+            if (msg.contains("Sent") || msg.contains("Wait")) {
+                this.msg = msg;
+            } else {
+                this.msg = "Uploading: " + msg + "%";
+            }
         }
 
         @Override

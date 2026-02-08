@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">e-Paper Esp32 Loader</string>
+    <string name="app_name">Magic Browser v2.0</string>
     <string name="bluetooth">bluetooth</string>
     <string name="nothing"></string>
 
@@ -10,7 +10,7 @@
     <string name="upld">Upload image</string>
     <string name="wifi">Wi-Fi connection</string>
     <string name="chck">Check Wi-Fi connection</string>
-    <string name="brws">Open in browser</string>
+    <string name="brws">Open Magic Browser</string>
 
     <string name="txt_conn">Connected to:</string>
     <string name="txt_load">Loaded:</string>
