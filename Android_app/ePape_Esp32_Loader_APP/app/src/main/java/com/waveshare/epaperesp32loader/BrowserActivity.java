@@ -66,7 +66,7 @@ public class BrowserActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 Log.d("MagicBrowser", "Page Loaded: " + url);
-                injectDetectionScript();
+                injectDetectionScript(false);
             }
         });
 
@@ -106,41 +106,71 @@ public class BrowserActivity extends AppCompatActivity {
             }
             return false;
         });
+
+        // Manual Extract Button
+        android.widget.Button manualScanBtn = findViewById(R.id.manual_scan_btn);
+        manualScanBtn.setOnClickListener(v -> {
+            Log.d("MagicBrowser", "Manual Extract Requested");
+            Toast.makeText(BrowserActivity.this, "Scanning page...", Toast.LENGTH_SHORT).show();
+            injectDetectionScript(true); // Force run
+        });
     }
 
-    private void injectDetectionScript() {
+    private void injectDetectionScript(boolean runNow) {
         Log.d("MagicBrowser", "Injecting Smart Script...");
         String js = 
             "(function() {" +
-            "   console.log('Smart Script Active!');" +
+            "   console.log('Smart Script Active! scrapePage() defined.');" +
+            "   " +
+            "   window.scrapePage = function() {" +
+            "       console.log('Scraping Page...');" +
+            "       var name = '';" +
+            "       var price = '';" +
+            "       " +
+            "       /* Try finding a container card */" +
+            "       /* Page Level Extraction (PDP style) */" +
+            "       var titleEl = document.querySelector('#productTitle, #title, h1.product-title-word-break, span#productTitle');" +
+            "       if (titleEl) name = titleEl.innerText;" +
+            "       " +
+            "       var priceEl = document.querySelector('#priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen, span.a-price span.a-offscreen, .price, .money');" +
+            "       if (priceEl) price = priceEl.innerText || priceEl.textContent;" +
+            "       " +
+            "       /* Fallback to Meta Tags */" +
+            "       if (!name) {" +
+            "           var meta = document.querySelector('meta[property=\"og:title\"]');" +
+            "           if (meta) name = meta.content;" +
+            "       }" +
+            "       if (!price) {" +
+            "            var metaP = document.querySelector('meta[property=\"product:price:amount\"], meta[property=\"og:price:amount\"]');" +
+            "            if (metaP) price = metaP.content;" +
+            "       }" +
+            "       " +
+            "       if (name) {" +
+            "           name = name.trim();" +
+            "           if(price) price = price.trim();" +
+            "           console.log('Found Item: ' + name + ' @ ' + price);" +
+            "           if(window.Android) window.Android.onItemSelected(name, price);" +
+            "       } else {" +
+            "           console.log('No Item Found');" +
+            "           if(window.Android) window.Android.onItemSelected('No Item Found', '');" +
+            "       }" +
+            "   };" +
+            "   " +
             "   document.addEventListener('click', function(e) {" +
-            "       console.log('Click detected on: ' + e.target.tagName);" +
             "       var target = e.target;" +
-            "       var btn = target.closest('button') || (target.tagName === 'BUTTON' ? target : null);" +
-            "       if (!btn && target.tagName === 'INPUT' && target.type === 'submit') btn = target;" +
+            "       var btn = target.closest('button, a, input[type=\"submit\"], input[type=\"button\"]');" +
             "       if (!btn) return;" +
-            "       var text = (btn.innerText || btn.value || '').toLowerCase();" +
-            "       console.log('Button text: ' + text);" +
-            "       if (text.includes('add') || text.includes('cart') || text.includes('buy') || text.includes('select')) {" +
-            "           console.log('Shopping Action Detected!');" +
-            "           var card = btn.closest('.product-card, .item, .product');" +
-            "           if (card) {" +
-            "               var nameEl = card.querySelector('.product-title, .title, h1, h2, h3, .name');" +
-            "               var priceEl = card.querySelector('.product-price, .price, .cost');" +
-            "               var name = nameEl ? nameEl.innerText : 'Unknown Item';" +
-            "               var price = priceEl ? priceEl.innerText : 'Unknown Price';" +
-            "               console.log('Found Item: ' + name + ' @ ' + price);" +
-            "               if(window.Android) window.Android.onItemSelected(name, price);" +
-            "           } else {" +
-            "             console.log('No Pattern Match, trying meta tags...');" +
-            "               var metaTitle = document.querySelector('meta[property=\"og:title\"]');" +
-            "               var metaPrice = document.querySelector('meta[property=\"product:price:amount\"]');" +
-            "               if (metaTitle && window.Android) {" +
-            "                   window.Android.onItemSelected(metaTitle.content, metaPrice ? metaPrice.content : 'On Request');" +
-            "               }" +
-            "           }" +
+            "       " +
+            "       var text = (btn.innerText || btn.value || btn.id || '').toLowerCase();" +
+            "       var isAmazonBtn = (btn.id === 'add-to-cart-button' || btn.name === 'submit.add-to-cart');" +
+            "       " +
+            "       if (isAmazonBtn || text.includes('add') || text.includes('cart') || text.includes('buy') || text.includes('checkout')) {" +
+            "           console.log('Shopping Action Detected! Running Scraper...');" +
+            "           window.scrapePage();" +
             "       }" +
             "   }, true);" +
+            "   " +
+            (runNow ? "window.scrapePage();" : "") + 
             "})();";
             
         webView.evaluateJavascript(js, null);
@@ -189,18 +219,26 @@ public class BrowserActivity extends AppCompatActivity {
         EPaperDisplay selectedDisplay = EPaperDisplay.getDisplays()[EPaperDisplay.epdInd];
         int targetWidth = selectedDisplay.width;
         int targetHeight = selectedDisplay.height;
-        String data = name + "|" + price;
+
+        // SANITIZE DATA
+        // QR Code can handle more data, but let's keep it reasonable.
+        String safeName = name.replace("|", " ").trim();
+        if (safeName.length() > 64) safeName = safeName.substring(0, 64) + "...";
+        
+        String safePrice = price.replace("|", "").trim();
+        
+        String data = safeName + "|" + safePrice;
 
         boolean rotate = false;
-        // If portrait mode, swap dimensions to generate a wider (higher resolution) barcode, then rotate
+        // If portrait mode, swap dimensions to generate a wider (higher resolution) layout, then rotate
         if (targetHeight > targetWidth) {
             int temp = targetWidth;
-            targetWidth = targetHeight; // Make it wide
-            targetHeight = temp;
+            targetWidth = targetHeight; // Make it wide (e.g. 250)
+            targetHeight = temp;        // Make it short (e.g. 122)
             rotate = true;
         }
 
-        // 1. Generate Barcode Bitmap matched to display
+        // 1. Generate QR Code Bitmap matched to display
         Bitmap barcodeInfo = createBarcodeImage(data, targetWidth, targetHeight);
 
         if (barcodeInfo == null) {
@@ -232,56 +270,80 @@ public class BrowserActivity extends AppCompatActivity {
     
     private Bitmap createBarcodeImage(String content, int targetWidth, int targetHeight) {
         try {
-            // Determine orientation (Portrait vs Landscape)
-            // Most e-paper raw buffers are landscape? Or Portrait? 
-            // The library seems to handle rotation, but let's generate a fit image.
-            
-            // Let's assume we want to draw into the exact buffer size.
-            
+            // Use QR Code for robust data capacity
             MultiFormatWriter multiFormatWriter = new MultiFormatWriter();
-            // Create barcode slightly smaller than width
-            int bmWidth = (int)(targetWidth * 0.8);
-            if (bmWidth < 100) bmWidth = 100;
             
-            BitMatrix bitMatrix = multiFormatWriter.encode(content, BarcodeFormat.CODE_128, bmWidth, 80);
+            // Layout: 
+            // If Landscape-ish (Width > Height): [Text] [QR]
+            // QR Size = Height (e.g. 122)
+            // Text Area = Width - Height (e.g. 250 - 122 = 128)
+            
+            int qrSize = Math.min(targetWidth, targetHeight);
+            if (qrSize > 250) qrSize = 250; 
+            
+            // DEBUG: Force simple content if needed, but let's try to catch the error
+            // content = "DEBUG"; 
+            
+            BitMatrix bitMatrix = multiFormatWriter.encode(content, BarcodeFormat.QR_CODE, qrSize, qrSize);
             BarcodeEncoder barcodeEncoder = new BarcodeEncoder();
-            Bitmap barcodeBitmap = barcodeEncoder.createBitmap(bitMatrix);
+            Bitmap qrBitmap = barcodeEncoder.createBitmap(bitMatrix);
             
             Bitmap combined = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(combined);
             canvas.drawColor(Color.WHITE);
             
-            // Draw Text
             Paint paint = new Paint();
             paint.setColor(Color.BLACK);
-            paint.setTextSize(20);
+            paint.setTextSize(18);
             paint.setAntiAlias(true);
              
-            // Simplest approach: Text on Top, Barcode on Bottom
-            String displayPrice = content.contains("|") ? content.split("\\|")[1] : "";
-            String displayName = content.contains("|") ? content.split("\\|")[0] : content;
-            if(displayName.length() > 20) displayName = displayName.substring(0, 18) + "..";
+            // ROBUST SPLITTING (Fixes IndexOutOfBoundsException)
+            String[] parts = content.split("\\|", -1);
+            String displayName = parts.length > 0 ? parts[0] : content;
+            String displayPrice = parts.length > 1 ? parts[1] : "";
             
-            // Center text attempt
-            float textWidth = paint.measureText(displayName);
-            canvas.drawText(displayName, (targetWidth - textWidth) / 2, 25, paint);
-            
-            float priceWidth = paint.measureText(displayPrice);
-            canvas.drawText(displayPrice, (targetWidth - priceWidth) / 2, 50, paint);
-             
-             // Draw Barcode centered
-             int xPos = (targetWidth - barcodeBitmap.getWidth()) / 2;
-             if (xPos < 0) xPos = 0;
-             canvas.drawBitmap(barcodeBitmap, xPos, 60, null);
-             
-             // Check if rotation is needed based on display Index?
-             // Actually, the original 'Upload' logic might expect the image in a specific orientation
-             // The original app allows rotating? No, it just crops.
-             // We will send it as is. If it's sideways, we can fix closer to final.
-             
+            // Draw Layout
+            if (targetWidth > targetHeight) {
+                // Landscape: Text Left, QR Right
+                // Draw QR aligned right
+                canvas.drawBitmap(qrBitmap, targetWidth - qrSize, 0, null);
+                
+                // Draw Text Left
+                // Simple wrapping or just 2 lines
+                canvas.drawText(displayPrice, 10, 30, paint); // Price Top
+                
+                // Name (wrap manually roughly)
+                paint.setTextSize(14);
+                int y = 60;
+                int lineWidth = targetWidth - qrSize - 10;
+                // crude wrapping
+                String[] words = displayName.split(" ");
+                String line = "";
+                for(String word : words) {
+                   if (paint.measureText(line + word) < lineWidth) {
+                       line += word + " ";
+                   } else {
+                       canvas.drawText(line, 10, y, paint);
+                       y += 18;
+                       line = word + " ";
+                   }
+                   if (y > targetHeight) break;
+                }
+                canvas.drawText(line, 10, y, paint);
+                
+            } else {
+               // Portrait: Text Top, QR Bottom
+               // Not implemented for now as we enforce Landscape rotation logic
+               // Fallback: Just center QR
+               int xPos = (targetWidth - qrBitmap.getWidth()) / 2;
+               canvas.drawBitmap(qrBitmap, xPos, targetHeight - qrSize, null);
+            }
+
             return combined;
         } catch (Exception e) {
             e.printStackTrace();
+            final String err = e.getMessage();
+            runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "Enc Err: " + err, Toast.LENGTH_LONG).show());
             return null;
         }
     }

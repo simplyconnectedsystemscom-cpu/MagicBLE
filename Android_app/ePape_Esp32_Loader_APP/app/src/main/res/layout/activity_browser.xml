@@ -4,16 +4,34 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/url_bar"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="textUri"
-        android:imeOptions="actionGo"
-        android:hint="Scan or type URL..."
-        android:padding="16dp"
+        android:orientation="horizontal"
         android:background="#f5f5f5"
-        android:singleLine="true"/>
+        android:padding="8dp">
+
+        <EditText
+            android:id="@+id/url_bar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="textUri"
+            android:imeOptions="actionGo"
+            android:hint="Scan or type URL..."
+            android:padding="12dp"
+            android:background="@null"
+            android:singleLine="true"/>
+
+        <Button
+            android:id="@+id/manual_scan_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Extract"
+            android:backgroundTint="#FF4081"
+            android:textColor="#FFFFFF"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
 
     <WebView
         android:id="@+id/webview"
