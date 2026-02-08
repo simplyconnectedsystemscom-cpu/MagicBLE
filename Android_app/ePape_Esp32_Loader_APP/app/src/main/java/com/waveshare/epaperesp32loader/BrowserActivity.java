@@ -12,7 +12,9 @@ import android.graphics.Paint;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
@@ -20,6 +22,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -33,6 +37,7 @@ import com.waveshare.epaperesp32loader.image_processing.EPaperPicture;
 public class BrowserActivity extends AppCompatActivity {
     private WebView webView;
     private EditText urlBar;
+    private ProgressBar progressBar;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -40,59 +45,65 @@ public class BrowserActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_browser);
         
-        // Recover Bluetooth from Intent
+        // Recover Bluetooth
         BluetoothDevice intentDevice = getIntent().getParcelableExtra("BT_DEVICE");
         if (intentDevice != null) {
             AppStartActivity.btDevice = intentDevice;
         }
 
+        // Initialize Views
         urlBar = findViewById(R.id.url_bar);
+        progressBar = findViewById(R.id.web_progress);
         webView = findViewById(R.id.webview);
+        ImageButton magicBtn = findViewById(R.id.manual_scan_btn);
+        ImageButton navBack = findViewById(R.id.nav_back);
+        ImageButton navFwd = findViewById(R.id.nav_fwd);
+        ImageButton navReload = findViewById(R.id.nav_reload);
+        ImageButton navHome = findViewById(R.id.nav_home);
 
         if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("Magic Browser v2.5 - Ready");
+            getSupportActionBar().hide(); 
         }
 
-        // Configure WebView settings
+        // WebView Settings
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
         
-        // Ensure links open in the WebView, not external browser
+        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
+
+        // WebView Client
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 Log.d("MagicBrowser", "Page Loaded: " + url);
+                urlBar.setText(url);
                 injectDetectionScript(false);
             }
         });
 
+        // WebChrome Client
         webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
-                Log.d("MagicBrowser", "JS: " + consoleMessage.message());
-                return true;
-            }
+             @Override
+             public void onProgressChanged(WebView view, int newProgress) {
+                 if (newProgress == 100) {
+                     progressBar.setVisibility(View.INVISIBLE);
+                 } else {
+                     progressBar.setVisibility(View.VISIBLE);
+                     progressBar.setProgress(newProgress);
+                 }
+             }
+             @Override
+             public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                 Log.d("MagicBrowser", "JS: " + consoleMessage.message());
+                 return true;
+             }
         });
 
-        // Add the Javascript Interface for "Recognition"
-        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
-
-        // Load the local test shopping cart
-        webView.loadUrl("file:///android_asset/shopping_test.html");
-        
-        // Proper Status Update
-        if (AppStartActivity.btDevice != null) {
-             // Toast.makeText(this, "Connected: " + AppStartActivity.btDevice.getName(), Toast.LENGTH_SHORT).show();
-             // Silent success
-        } else {
-             Toast.makeText(this, "Wait! Bluetooth Disconnected!", Toast.LENGTH_LONG).show();
-        }
-
-        // URL Bar Logic
+        // URL Bar
         urlBar.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO ||
                     (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
@@ -102,37 +113,54 @@ public class BrowserActivity extends AppCompatActivity {
                     url = "https://" + url;
                 }
                 webView.loadUrl(url);
+                
+                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(urlBar.getWindowToken(), 0);
+                
                 return true;
             }
             return false;
         });
 
-        // Manual Extract Button
-        android.widget.Button manualScanBtn = findViewById(R.id.manual_scan_btn);
-        manualScanBtn.setOnClickListener(v -> {
-            Log.d("MagicBrowser", "Manual Extract Requested");
+        // Magic Btn
+        magicBtn.setOnClickListener(v -> {
+            Log.d("MagicBrowser", "Magic Wand Activated");
             Toast.makeText(BrowserActivity.this, "Scanning page...", Toast.LENGTH_SHORT).show();
-            injectDetectionScript(true); // Force run
+            injectDetectionScript(true);
         });
+
+        // Navigation
+        navBack.setOnClickListener(v -> { if (webView.canGoBack()) webView.goBack(); });
+        navFwd.setOnClickListener(v -> { if (webView.canGoForward()) webView.goForward(); });
+        navReload.setOnClickListener(v -> webView.reload());
+        navHome.setOnClickListener(v -> webView.loadUrl("https://www.google.com"));
+
+        // Load Default
+        webView.loadUrl("file:///android_asset/shopping_test.html");
     }
 
-    private void injectDetectionScript(boolean runNow) {
-        Log.d("MagicBrowser", "Injecting Smart Script...");
+    private void injectDetectionScript(boolean manual) {
+        Log.d("MagicBrowser", "Injecting Smart Script (Manual: " + manual + ")...");
         String js = 
             "(function() {" +
             "   console.log('Smart Script Active! scrapePage() defined.');" +
             "   " +
-            "   window.scrapePage = function() {" +
-            "       console.log('Scraping Page...');" +
+            "   window.scrapePage = function(isManual) {" +
+            "       console.log('Scraping Page (Manual: ' + isManual + ')...');" +
             "       var name = '';" +
             "       var price = '';" +
             "       " +
             "       /* Try finding a container card */" +
             "       /* Page Level Extraction (PDP style) */" +
-            "       var titleEl = document.querySelector('#productTitle, #title, h1.product-title-word-break, span#productTitle');" +
+            "       /* Added Best Buy selectors (.sku-title h1, .heading-5, .priceView-hero-price span) */" +
+            "       /* Added Target selectors ([data-test=\"product-title\"]) */" +
+            "       /* Added Walmart, eBay, Etsy, Shopify selectors */" +
+            "       /* Added Home Depot, Office Depot selectors */" +
+            "       /* Added Magento, BigCommerce, PrestaShop, Squarespace selectors */" +
+            "       var titleEl = document.querySelector('#productTitle, #title, h1.product-title-word-break, span#productTitle, .sku-title h1, .product-title, .heading-5, [data-test=\"product-title\"], h1#main-title, [itemprop=\"name\"], .x-item-title__mainTitle, [data-buy-box-listing-title], h1.product-single__title, .product_title, h1.product-details__title, h1.od-product-title, h1.page-title span, .productView-title, h1.product-title, .ProductItem-details-title');" +
             "       if (titleEl) name = titleEl.innerText;" +
             "       " +
-            "       var priceEl = document.querySelector('#priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen, span.a-price span.a-offscreen, .price, .money');" +
+            "       var priceEl = document.querySelector('#priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen, span.a-price span.a-offscreen, .price, .money, .priceView-hero-price span, .large-price, .price-block .price, [data-test=\"product-price\"], [itemprop=\"price\"], .x-price-primary, .wt-text-title-03, .product-price, .price-item--regular, .woocommerce-Price-amount, .price__format, .od-price-value, .product-info-price .price, .price--withTax, .retail-price, .sale-price, .current-price span.price, .sqs-money-native');" +
             "       if (priceEl) price = priceEl.innerText || priceEl.textContent;" +
             "       " +
             "       /* Fallback to Meta Tags */" +
@@ -145,14 +173,27 @@ public class BrowserActivity extends AppCompatActivity {
             "            if (metaP) price = metaP.content;" +
             "       }" +
             "       " +
-            "       if (name) {" +
+            "       /* VALIDATE PRODUCT PAGE: Must have 'Add to Cart' button (to avoid Home Page false positives) */" +
+            "       var buyBtn = document.querySelector('#add-to-cart-button, .add-to-cart, [name=\"add\"], .btn-add-to-cart, [data-test=\"shipItButton\"], [data-test=\"add-to-cart\"], .x-atc-action, .single_add_to_cart_button, .product-form__cart-submit');" +
+            "       if (!buyBtn) {" +
+            "           /* Try text search for 'Add to Cart' */" +
+            "           var xpath = \"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart')]\";" +
+            "           try {" +
+            "               var result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);" +
+            "               buyBtn = result.singleNodeValue;" +
+            "           } catch(e) {}" +
+            "       }" +
+            "       " +
+            "       if (name && (buyBtn || isManual)) {" +
             "           name = name.trim();" +
             "           if(price) price = price.trim();" +
             "           console.log('Found Item: ' + name + ' @ ' + price);" +
             "           if(window.Android) window.Android.onItemSelected(name, price);" +
-            "       } else {" +
+            "       } else if (isManual) {" +
             "           console.log('No Item Found');" +
             "           if(window.Android) window.Android.onItemSelected('No Item Found', '');" +
+            "       } else {" +
+            "           console.log('Ignored: Name found but no Buy Button (Home Page?)');" +
             "       }" +
             "   };" +
             "   " +
@@ -166,11 +207,11 @@ public class BrowserActivity extends AppCompatActivity {
             "       " +
             "       if (isAmazonBtn || text.includes('add') || text.includes('cart') || text.includes('buy') || text.includes('checkout')) {" +
             "           console.log('Shopping Action Detected! Running Scraper...');" +
-            "           window.scrapePage();" +
+            "           window.scrapePage(true);" +
             "       }" +
             "   }, true);" +
             "   " +
-            (runNow ? "window.scrapePage();" : "") + 
+            "   window.scrapePage(" + manual + ");" + 
             "})();";
             
         webView.evaluateJavascript(js, null);
