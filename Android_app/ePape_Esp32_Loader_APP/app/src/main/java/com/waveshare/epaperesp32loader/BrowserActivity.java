@@ -147,10 +147,10 @@ public class BrowserActivity extends AppCompatActivity {
         navBack.setOnClickListener(v -> { if (webView.canGoBack()) webView.goBack(); });
         navFwd.setOnClickListener(v -> { if (webView.canGoForward()) webView.goForward(); });
         navReload.setOnClickListener(v -> webView.reload());
-        navHome.setOnClickListener(v -> webView.loadUrl("https://www.walmart.com"));
+        navHome.setOnClickListener(v -> webView.loadUrl("https://www.wawa.com"));
 
         // Load Default
-        webView.loadUrl("https://www.walmart.com");
+        webView.loadUrl("https://www.wawa.com");
     }
 
     private void injectDetectionScript(boolean manual) {
@@ -170,10 +170,52 @@ public class BrowserActivity extends AppCompatActivity {
             "       /* Added Best Buy selectors (.sku-title h1, .heading-5, .priceView-hero-price span) */" +
             "       /* Added Target selectors ([data-test=\"product-title\"]) */" +
             "       /* Added Walmart, eBay, Etsy, Shopify selectors */" +
-            "       /* Added Home Depot, Office Depot selectors */" +
-            "       /* Added Magento, BigCommerce, PrestaShop, Squarespace selectors */" +
-            "       var titleEl = document.querySelector('#productTitle, #title, h1.product-title-word-break, span#productTitle, .sku-title h1, .product-title, .heading-5, [data-test=\"product-title\"], h1#main-title, [itemprop=\"name\"], .x-item-title__mainTitle, [data-buy-box-listing-title], h1.product-single__title, .product_title, h1.product-details__title, h1.od-product-title, h1.page-title span, .productView-title, h1.product-title, .ProductItem-details-title');" +
-            "       if (titleEl) name = titleEl.innerText;" +
+            "       /* 1. Extract Name (Title) */" +
+            "       var name = '';" +
+            "       /* Strategy 1: Document Title (Cleaned) */" +
+            "       var docTitle = document.title;" +
+            "       if (docTitle) {" +
+            "           /* Remove known suffixes for Wawa and others */" +
+            "           docTitle = docTitle.replace(/\\s*[-|]\\s*(Wawa|Order Online|Menu|Official Site).*/i, '').trim();" +
+            "           /* Check for generic titles */" +
+            "           if (docTitle.length > 2 && !/^(Menu|Order|Customize|Start|Home|Welcome|Start Your Order)$/i.test(docTitle)) {" +
+            "               name = docTitle;" +
+            "           }" +
+            "       }" +
+            "       " +
+            "       /* Strategy 2: Wawa URL Extraction (Fallback) */" +
+            "       if ((!name || name.length < 3) && window.location.host.includes('wawa') && window.location.href.includes('/menu/')) {" +
+            "           var path = window.location.pathname;" +
+            "           var segments = path.split('/').filter(function(s){return s.length>0;});" +
+            "           var menuIndex = segments.indexOf('menu');" +
+            "           if (menuIndex >= 0 && menuIndex + 1 < segments.length) {" +
+            "               var slug = segments[menuIndex + 1];" +
+            "               name = slug.replace(/-/g, ' ').replace(/\\b\\w/g, function(l){return l.toUpperCase();});" +
+            "           } else if (segments.length > 0) {" +
+            "               var last = segments[segments.length-1];" +
+            "               if (/[a-zA-Z]/.test(last)) {" +
+            "                   name = last.replace(/-/g, ' ').replace(/\\b\\w/g, function(l){return l.toUpperCase();});" +
+            "               }" +
+            "           }" +
+            "       }" +
+            "       " +
+            "       /* DOM Fallback */" +
+            "       if (!name) {" +
+            "           var titleEl = document.querySelector('.modal-title, .dialog-title, .popup-title, .overlay-title, [role=\"dialog\"] h1, [role=\"dialog\"] h2, h1, h2, h3, h4, [role=\"heading\"], [aria-level], .product-name, .item-name, [class*=\"product-title\"], [class*=\"item-title\"], #productTitle, #title, h1.product-title-word-break, span#productTitle, .sku-title h1, .product-title, .heading-5, [data-test=\"product-title\"], h1#main-title, [itemprop=\"name\"], .x-item-title__mainTitle, [data-buy-box-listing-title], h1.product-single__title, .product_title, h1.product-details__title, h1.od-product-title, h1.page-title span, .productView-title, h1.product-title, .ProductItem-details-title');" +
+            "           if (titleEl) name = titleEl.innerText;" +
+            "       }" +
+            "       /* Fallback: Extract Name from URL Slug (e.g. wawa.com/.../5-big-breakfast-deal) */" +
+            "       if (!name) {" +
+            "           var path = window.location.pathname;" +
+            "           var segments = path.split('/').filter(function(s){return s.length>0;});" +
+            "           if (segments.length > 0) {" +
+            "               var last = segments[segments.length-1];" +
+            "               if (/[a-zA-Z]/.test(last)) {" +
+            "                   name = last.replace(/-/g, ' ').replace(/\\b\\w/g, function(l){return l.toUpperCase();});" +
+            "                   name = name.replace(/\\.(html|php|aspx)$/, '');" +
+            "               }" +
+            "           }" +
+            "       }" +
             "       " +
             "       var priceEl = document.querySelector('#priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen, span.a-price span.a-offscreen, .price, .money, .priceView-hero-price span, .large-price, .price-block .price, [data-test=\"product-price\"], [itemprop=\"price\"], .x-price-primary, .wt-text-title-03, .product-price, .price-item--regular, .woocommerce-Price-amount, .price__format, .od-price-value, .product-info-price .price, .price--withTax, .retail-price, .sale-price, .current-price span.price, .sqs-money-native');" +
             "       if (priceEl) price = priceEl.getAttribute('content') || priceEl.innerText || priceEl.textContent;" +
@@ -190,15 +232,18 @@ public class BrowserActivity extends AppCompatActivity {
             "       " +
             "       /* Check for Open Graph Product Type OR URL Signal */" +
             "       var ogType = document.querySelector('meta[property=\"og:type\"]');" +
-            "       var isProduct = (ogType && ogType.content === 'product') || window.location.href.includes('/p/') || window.location.href.includes('/products/') || window.location.href.includes('/product/') || window.location.href.includes('/ip/') || window.location.href.includes('/dp/');" +
+            "       var isProduct = (ogType && ogType.content === 'product') || window.location.href.includes('/p/') || window.location.href.includes('/products/') || window.location.href.includes('/product/') || window.location.href.includes('/ip/') || window.location.href.includes('/dp/') || (window.location.host.includes('wawa') && window.location.href.includes('/menu/'));" +
             "       " +
             "       /* VALIDATE PRODUCT PAGE: Must have 'Add to Cart' button (to avoid Home Page false positives) */" +
             "       var buyBtn = document.querySelector('#add-to-cart-button, .add-to-cart, [name=\"add\"], .btn-add-to-cart, [data-test=\"shipItButton\"], [data-test=\"add-to-cart\"], .x-atc-action, .single_add_to_cart_button, .product-form__cart-submit, .add-to-cart-button, [data-sku-id]');" +
             "       if (!buyBtn) {" +
-            "           /* Try text search for 'Add to Cart', 'Add to Bag', 'Buy Now' */" +
-            "           var xpath = \"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now')] | \" +" +
-            "                       \"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now')] | \" +" +
-            "                       \"//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now')]\";" +
+            "           /* Try text search for 'Add to Cart', 'Add to Bag', 'Buy Now', 'Add to Order', 'Start Order' */" +
+            "           var xpath = \"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start your order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'order now')] | \" +" +
+            "                       \"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start your order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'order now')] | \" +" +
+            "                       \"//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to order') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start order') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start your order') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'order now')] | \" +" +
+            "                       \"//*[@role='button' and (contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start your order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'order now'))] | \" +" +
+            "                       \"//div[(string-length(normalize-space(text())) < 30) and (contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start your order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'order now'))] | \" +" +
+            "                       \"//span[(string-length(normalize-space(text())) < 30) and (contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'start your order') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'order now'))]\";" +
             "           try {" +
             "               var result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);" +
             "               buyBtn = result.singleNodeValue;" +
@@ -213,8 +258,10 @@ public class BrowserActivity extends AppCompatActivity {
             "           console.log('Found Item: ' + name + ' @ ' + price);" +
             "           if(window.Android) window.Android.onItemSelected(name, price, isManual);" +
             "       } else if (isManual) {" +
-            "           console.log('No Item Found');" +
-            "           if(window.Android) window.Android.onItemSelected('No Item Found', '', isManual);" +
+            "           var msg = 'Manual Fail: ';" +
+            "           if (!name) msg += 'No Name Found. ';" +
+            "           else msg += 'Name Found (' + name + '), but Logic Failed. ';" +
+            "           window.Android.showToast(msg);" +
             "       } else {" +
             "           console.log('Ignored: Name found but no Buy Button?');" +
             "           /* Silent Fail for Auto */" +
@@ -252,6 +299,11 @@ public class BrowserActivity extends AppCompatActivity {
 
         WebAppInterface(Context c) {
             mContext = c;
+        }
+
+        @JavascriptInterface
+        public void showToast(String toast) {
+            Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show();
         }
 
         /**
