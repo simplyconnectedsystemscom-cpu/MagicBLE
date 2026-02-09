@@ -155,6 +155,8 @@ public class AppStartActivity extends AppCompatActivity
         if (btDevice != null) {
             intent.putExtra("BT_DEVICE", btDevice);
         }
+        // Pass the selected display type to ensure persistence
+        intent.putExtra("EPD_IND", EPaperDisplay.epdInd);
         startActivity(intent);
     }
 

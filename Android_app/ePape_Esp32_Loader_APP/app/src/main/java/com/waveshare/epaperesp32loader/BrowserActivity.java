@@ -38,12 +38,19 @@ public class BrowserActivity extends AppCompatActivity {
     private WebView webView;
     private EditText urlBar;
     private ProgressBar progressBar;
+    private String lastUploadedName = ""; // Deduplication
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_browser);
+        
+        // Restore State from Intent
+        int ind = getIntent().getIntExtra("EPD_IND", -1);
+        if (ind != -1) {
+            EPaperDisplay.epdInd = ind;
+        }
         
         // Recover Bluetooth
         BluetoothDevice intentDevice = getIntent().getParcelableExtra("BT_DEVICE");
@@ -80,7 +87,14 @@ public class BrowserActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 Log.d("MagicBrowser", "Page Loaded: " + url);
-                urlBar.setText(url);
+                
+                // Don't show internal asset URLs in the bar
+                if (url != null && url.startsWith("file:///android_asset/")) {
+                    urlBar.setText("");
+                } else {
+                    urlBar.setText(url);
+                }
+                
                 injectDetectionScript(false);
             }
         });
@@ -133,10 +147,10 @@ public class BrowserActivity extends AppCompatActivity {
         navBack.setOnClickListener(v -> { if (webView.canGoBack()) webView.goBack(); });
         navFwd.setOnClickListener(v -> { if (webView.canGoForward()) webView.goForward(); });
         navReload.setOnClickListener(v -> webView.reload());
-        navHome.setOnClickListener(v -> webView.loadUrl("https://www.google.com"));
+        navHome.setOnClickListener(v -> webView.loadUrl("https://www.homedepot.com"));
 
         // Load Default
-        webView.loadUrl("file:///android_asset/shopping_test.html");
+        webView.loadUrl("https://www.homedepot.com");
     }
 
     private void injectDetectionScript(boolean manual) {
@@ -144,6 +158,7 @@ public class BrowserActivity extends AppCompatActivity {
         String js = 
             "(function() {" +
             "   console.log('Smart Script Active! scrapePage() defined.');" +
+            "   var retryTimer = null;" +
             "   " +
             "   window.scrapePage = function(isManual) {" +
             "       console.log('Scraping Page (Manual: ' + isManual + ')...');" +
@@ -161,7 +176,7 @@ public class BrowserActivity extends AppCompatActivity {
             "       if (titleEl) name = titleEl.innerText;" +
             "       " +
             "       var priceEl = document.querySelector('#priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen, span.a-price span.a-offscreen, .price, .money, .priceView-hero-price span, .large-price, .price-block .price, [data-test=\"product-price\"], [itemprop=\"price\"], .x-price-primary, .wt-text-title-03, .product-price, .price-item--regular, .woocommerce-Price-amount, .price__format, .od-price-value, .product-info-price .price, .price--withTax, .retail-price, .sale-price, .current-price span.price, .sqs-money-native');" +
-            "       if (priceEl) price = priceEl.innerText || priceEl.textContent;" +
+            "       if (priceEl) price = priceEl.getAttribute('content') || priceEl.innerText || priceEl.textContent;" +
             "       " +
             "       /* Fallback to Meta Tags */" +
             "       if (!name) {" +
@@ -169,31 +184,40 @@ public class BrowserActivity extends AppCompatActivity {
             "           if (meta) name = meta.content;" +
             "       }" +
             "       if (!price) {" +
-            "            var metaP = document.querySelector('meta[property=\"product:price:amount\"], meta[property=\"og:price:amount\"]');" +
+            "            var metaP = document.querySelector('meta[property=\"product:price:amount\"], meta[property=\"og:price:amount\"], meta[itemprop=\"price\"]');" +
             "            if (metaP) price = metaP.content;" +
             "       }" +
             "       " +
+            "       /* Check for Open Graph Product Type OR URL Signal */" +
+            "       var ogType = document.querySelector('meta[property=\"og:type\"]');" +
+            "       var isProduct = (ogType && ogType.content === 'product') || window.location.href.includes('/p/');" +
+            "       " +
             "       /* VALIDATE PRODUCT PAGE: Must have 'Add to Cart' button (to avoid Home Page false positives) */" +
-            "       var buyBtn = document.querySelector('#add-to-cart-button, .add-to-cart, [name=\"add\"], .btn-add-to-cart, [data-test=\"shipItButton\"], [data-test=\"add-to-cart\"], .x-atc-action, .single_add_to_cart_button, .product-form__cart-submit');" +
+            "       var buyBtn = document.querySelector('#add-to-cart-button, .add-to-cart, [name=\"add\"], .btn-add-to-cart, [data-test=\"shipItButton\"], [data-test=\"add-to-cart\"], .x-atc-action, .single_add_to_cart_button, .product-form__cart-submit, .add-to-cart-button, [data-sku-id]');" +
             "       if (!buyBtn) {" +
-            "           /* Try text search for 'Add to Cart' */" +
-            "           var xpath = \"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart')]\";" +
+            "           /* Try text search for 'Add to Cart', 'Add to Bag', 'Buy Now' */" +
+            "           var xpath = \"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now')] | \" +" +
+            "                       \"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now')] | \" +" +
+            "                       \"//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag') or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buy now')]\";" +
             "           try {" +
             "               var result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);" +
             "               buyBtn = result.singleNodeValue;" +
             "           } catch(e) {}" +
             "       }" +
             "       " +
-            "       if (name && (buyBtn || isManual)) {" +
+            "       /* Auto-Detect Logic: Manual OR IsProduct OR (Name + Price + HasButton) */" +
+            "       if (name && (isManual || isProduct || (price && buyBtn))) {" +
+            "           if (retryTimer) clearTimeout(retryTimer);" +
             "           name = name.trim();" +
             "           if(price) price = price.trim();" +
             "           console.log('Found Item: ' + name + ' @ ' + price);" +
-            "           if(window.Android) window.Android.onItemSelected(name, price);" +
+            "           if(window.Android) window.Android.onItemSelected(name, price, isManual);" +
             "       } else if (isManual) {" +
             "           console.log('No Item Found');" +
-            "           if(window.Android) window.Android.onItemSelected('No Item Found', '');" +
+            "           if(window.Android) window.Android.onItemSelected('No Item Found', '', isManual);" +
             "       } else {" +
-            "           console.log('Ignored: Name found but no Buy Button (Home Page?)');" +
+            "           console.log('Ignored: Name found but no Buy Button?');" +
+            "           /* Silent Fail for Auto */" +
             "       }" +
             "   };" +
             "   " +
@@ -212,6 +236,9 @@ public class BrowserActivity extends AppCompatActivity {
             "   }, true);" +
             "   " +
             "   window.scrapePage(" + manual + ");" + 
+            "   if (!" + manual + ") {" +
+            "       retryTimer = setTimeout(function() { console.log('Retrying scrape...'); window.scrapePage(false); }, 5000);" +
+            "   }" + 
             "})();";
             
         webView.evaluateJavascript(js, null);
@@ -232,7 +259,16 @@ public class BrowserActivity extends AppCompatActivity {
          * This is the "Recognition" step.
          */
         @JavascriptInterface
-        public void onItemSelected(String itemName, String itemPrice) {
+        public void onItemSelected(String itemName, String itemPrice, boolean manual) {
+            // Deduplication: If Auto-Detect and same item, IGNORE.
+            if (!manual && itemName != null && itemName.equals(lastUploadedName)) {
+                Log.d("MagicBrowser", "Duplicate Item Ignored: " + itemName);
+                return;
+            }
+            if (itemName != null && !itemName.equals("No Item Found")) {
+                lastUploadedName = itemName;
+            }
+
             // Run on UI thread to show Toast or update UI
             runOnUiThread(() -> {
                 String message = "Recognized: " + itemName;
@@ -250,17 +286,20 @@ public class BrowserActivity extends AppCompatActivity {
             Toast.makeText(this, "Error: Connect Bluetooth in Main Menu first!", Toast.LENGTH_LONG).show();
             return;
         }
-
-        if (EPaperDisplay.epdInd == -1) {
+        
+        // Safety Check: Display Type Selected?
+        if (EPaperDisplay.epdInd < 0 || EPaperDisplay.epdInd >= EPaperDisplay.getDisplays().length) {
             Toast.makeText(this, "Error: Select Display Type in Main Menu first!", Toast.LENGTH_LONG).show();
             return;
         }
 
+        if (name == null || price == null) return;
+        
         // Get selected display dimensions
         EPaperDisplay selectedDisplay = EPaperDisplay.getDisplays()[EPaperDisplay.epdInd];
         int targetWidth = selectedDisplay.width;
         int targetHeight = selectedDisplay.height;
-
+        
         // SANITIZE DATA
         // QR Code can handle more data, but let's keep it reasonable.
         String safeName = name.replace("|", " ").trim();
@@ -301,8 +340,8 @@ public class BrowserActivity extends AppCompatActivity {
             AppStartActivity.indTableImage = EPaperPicture.createIndexedImage(false, false);
 
             // 4. Launch Upload Activity
-            Intent intent = new Intent(BrowserActivity.this, UploadActivity.class);
-            startActivity(intent);
+            // 4. Launch Silent Upload
+            new BackgroundUploader(BrowserActivity.this).startUpload(AppStartActivity.indTableImage);
 
         } catch (Exception e) {
             Toast.makeText(this, "Image Process Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();

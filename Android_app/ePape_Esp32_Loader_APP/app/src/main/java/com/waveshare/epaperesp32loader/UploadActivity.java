@@ -53,7 +53,17 @@ public class UploadActivity extends AppCompatActivity
 
         // Bluetooth socket connection
         //--------------------------------------
-        if (!BluetoothHelper.connect() || !handler.init(AppStartActivity.indTableImage))
+        // Bluetooth socket connection
+        //--------------------------------------
+        if (!BluetoothHelper.connect()) {
+            setResult(RESULT_CANCELED);
+            finish();
+            return;
+        }
+
+        android.os.SystemClock.sleep(500);
+
+        if (!handler.init(AppStartActivity.indTableImage))
         {
             setResult(RESULT_CANCELED);
             finish();
@@ -90,7 +100,7 @@ public class UploadActivity extends AppCompatActivity
 
     // Uploaded data buffer
     //---------------------------------------------------------
-    private static final int BUFF_SIZE = 256;
+    private static final int BUFF_SIZE = 128; // Reduced for stability
     private static byte[]    buffArr = new byte[BUFF_SIZE];
     private static int       buffInd;
     private static int       xLine;
@@ -386,7 +396,7 @@ public class UploadActivity extends AppCompatActivity
         private boolean u_line(int c, int k1, int k2)
         {
             buffInd = 6; // pixels' data offset
-            while ((pxInd < array.length) && (buffInd < 246))     // 15*16+6 ，16*8 = 128
+            while ((pxInd < array.length) && (buffInd < BUFF_SIZE))     // 15*16+6 ，16*8 = 128
             {
                 int v = 0;
 
