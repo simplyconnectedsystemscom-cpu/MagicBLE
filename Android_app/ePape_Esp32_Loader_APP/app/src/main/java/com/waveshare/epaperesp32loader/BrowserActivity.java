@@ -147,10 +147,10 @@ public class BrowserActivity extends AppCompatActivity {
         navBack.setOnClickListener(v -> { if (webView.canGoBack()) webView.goBack(); });
         navFwd.setOnClickListener(v -> { if (webView.canGoForward()) webView.goForward(); });
         navReload.setOnClickListener(v -> webView.reload());
-        navHome.setOnClickListener(v -> webView.loadUrl("https://www.homedepot.com"));
+        navHome.setOnClickListener(v -> webView.loadUrl("https://www.walmart.com"));
 
         // Load Default
-        webView.loadUrl("https://www.homedepot.com");
+        webView.loadUrl("https://www.walmart.com");
     }
 
     private void injectDetectionScript(boolean manual) {
@@ -190,7 +190,7 @@ public class BrowserActivity extends AppCompatActivity {
             "       " +
             "       /* Check for Open Graph Product Type OR URL Signal */" +
             "       var ogType = document.querySelector('meta[property=\"og:type\"]');" +
-            "       var isProduct = (ogType && ogType.content === 'product') || window.location.href.includes('/p/');" +
+            "       var isProduct = (ogType && ogType.content === 'product') || window.location.href.includes('/p/') || window.location.href.includes('/products/') || window.location.href.includes('/product/') || window.location.href.includes('/ip/') || window.location.href.includes('/dp/');" +
             "       " +
             "       /* VALIDATE PRODUCT PAGE: Must have 'Add to Cart' button (to avoid Home Page false positives) */" +
             "       var buyBtn = document.querySelector('#add-to-cart-button, .add-to-cart, [name=\"add\"], .btn-add-to-cart, [data-test=\"shipItButton\"], [data-test=\"add-to-cart\"], .x-atc-action, .single_add_to_cart_button, .product-form__cart-submit, .add-to-cart-button, [data-sku-id]');" +
