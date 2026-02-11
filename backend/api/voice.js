@@ -14,12 +14,12 @@ export default async function handler(request, response) {
 
         // 1. Get the detected item (Handle KV failures gracefully)
         let item = "luggage";
-        try {
-            item = await kv.get('current_item') || "luggage";
-        } catch (kvError) {
-            console.warn("KV Database Error (or not configured):", kvError.message);
-            // Fallback to "luggage" is already set
-        }
+        // try {
+        //     item = await kv.get('current_item') || "luggage";
+        // } catch (kvError) {
+        //     console.warn("KV Database Error (or not configured):", kvError.message);
+        //     // Fallback to "luggage" is already set
+        // }
 
 
 
