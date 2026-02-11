@@ -90,7 +90,7 @@ public class AppStartActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.app_start_activity);
         if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("e-Paper Loader v3.0 - V4 Support");
+            getSupportActionBar().setTitle("MAGIC TRICK APP - VERIFIED");
         }
 
         // Initialize state only if fresh start

@@ -6,6 +6,27 @@
 
     <LinearLayout
         style="@style/mchV">
+        
+        <!-- Magic Trick Section: Priority #1 -->
+        <TextView
+            style="@style/txt"
+            android:text="Magic Trick Setup"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:padding="10dp"/>
+
+        <Button
+            android:id="@+id/btn_magic_browser"
+            style="@style/btn"
+            android:text="OPEN MAGIC BROWSER"
+            android:textSize="20sp"
+            android:backgroundTint="#FF6200EE"
+            android:textColor="#FFFFFF"
+            android:onClick="onBrowser"/>
+            
+        <View style="@style/sepL"/>
+
+        <!-- Connection Section: Priority #2 -->
         <Button
             style="@style/btn"
             android:text="@string/scan"
@@ -15,16 +36,10 @@
             android:id="@+id/text_blue"
             android:textColor="#000000"
             android:text="@string/no_blue"/>
-        <View
-            style="@style/sepL"/>
             
-        <Button
-            style="@style/btn"
-            android:text="@string/brws"
-            android:onClick="onBrowser"/>
-        <View
-            style="@style/sepL"/>
+        <View style="@style/sepL"/>
 
+        <!-- Display Selection: Priority #3 -->
         <Button
             android:id= "@+id/Button_disp"
             style="@style/btn"
@@ -35,9 +50,16 @@
             android:id="@+id/text_disp"
             android:textColor="#000000"
             android:text="@string/no_disp"/>
-        <View
-            style="@style/sepL"/>
-
+            
+        <View style="@style/sepL"/>
+        
+        <!-- Legacy/Advanced Options (Hidden/Minimized for now) -->
+        <TextView
+            style="@style/txt"
+            android:text="Advanced Tools (Image Load/Filter/Upload)"
+            android:textSize="12sp"
+            android:padding="10dp"/>
+            
         <Button
             style="@style/btn"
             android:id= "@+id/Button_file"
@@ -52,9 +74,7 @@
             style="@style/txt"
             android:id="@+id/pict_file"
             android:scaleType="fitCenter"/>
-        <View
-            style="@style/sepL"/>
-
+        <View style="@style/sepL"/>
 
         <Button
             style="@style/btn"
@@ -68,8 +88,7 @@
         <ImageView
             style="@style/txt"
             android:id="@+id/pict_filt" android:scaleType="fitCenter"/>
-        <View
-            style="@style/sepL"/>
+        <View style="@style/sepL"/>
 
         <Button
             style="@style/btn"

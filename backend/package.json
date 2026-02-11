@@ -1,0 +1,11 @@
+{
+  "name": "magic-ble-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@vercel/kv": "^1.0.1",
+    "dotenv": "^16.4.5",
+    "elevenlabs-node": "^1.2.0",
+    "axios": "^1.6.0"
+  }
+}

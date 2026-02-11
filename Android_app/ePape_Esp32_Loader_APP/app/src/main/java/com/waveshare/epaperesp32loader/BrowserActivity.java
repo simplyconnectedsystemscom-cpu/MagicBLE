@@ -38,7 +38,12 @@ public class BrowserActivity extends AppCompatActivity {
     private WebView webView;
     private EditText urlBar;
     private ProgressBar progressBar;
-    private String lastUploadedName = ""; // Deduplication
+    private String lastUploadedName = "";
+    private long lastUploadTime = 0;
+    
+    /* Magic Trick Constants */
+    private static final String PATTER_PHONE = "234-635-1121"; // User to Update
+    private static final String CLOUD_BACKEND_URL = "https://magic-ble-backend.vercel.app/api/item";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -321,57 +326,100 @@ public class BrowserActivity extends AppCompatActivity {
                 lastUploadedName = itemName;
             }
 
-            // Run on UI thread to show Toast or update UI
+            // 1. Get Current URL (on UI thread to be safe, or direct?) 
+            // WebAppInterface is run on background thread? No, JavaBridge is separate.
+            // But we can't access webView UI methods strictly? 
+            // We'll do it in runOnUiThread.
+
             runOnUiThread(() -> {
                 String message = "Recognized: " + itemName;
                 Toast.makeText(mContext, message, Toast.LENGTH_SHORT).show();
                 
-                // Trigger the Magic Send Sequence!
-                processAndSendToEpaper(itemName, itemPrice);
+                String currentUrl = webView.getUrl();
+                String storeName = getStoreName(currentUrl);
+                
+                // 2. Send to Cloud (Critical Step before QR)
+                sendItemToCloud(itemName);
+                
+                // 3. Generate "Lost Luggage" Message
+                // TODO: Update PATTER_PHONE with real number
+                String qrMessage = "Thanks for finding my luggage at " + storeName + " please call " + PATTER_PHONE + " for further instructions";
+                
+                // 4. Send to E-Paper
+                processAndSendToEpaper(itemName, itemPrice, qrMessage);
             });
+        }
+        
+        private String getStoreName(String urlStr) {
+            try {
+                String host = new java.net.URL(urlStr).getHost();
+                host = host.replace("www.", "");
+                String name = host.split("\\.")[0];
+                if (name.length() > 0)
+                    return name.substring(0, 1).toUpperCase() + name.substring(1);
+                return name;
+            } catch (Exception e) {
+                return "The Store";
+            }
+        }
+
+        private void sendItemToCloud(final String itemName) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        java.net.URL url = new java.net.URL(CLOUD_BACKEND_URL);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setRequestProperty("Content-Type", "application/json; utf-8");
+                        conn.setDoOutput(true);
+                        String jsonInputString = "{\"item\": \"" + itemName + "\"}"; // Simplified JSON
+                        try(java.io.OutputStream os = conn.getOutputStream()) {
+                            byte[] input = jsonInputString.getBytes("utf-8");
+                            os.write(input, 0, input.length);
+                        }
+                        Log.d("MagicCloud", "Sent item: " + itemName + " Response: " + conn.getResponseCode());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
         }
     }
     
-    private void processAndSendToEpaper(String name, String price) {
-        // 0. Pre-Flight Checks
+    private void processAndSendToEpaper(String name, String price, String qrContent) {
+        // ... (Checks) ...
         if (AppStartActivity.btDevice == null) {
             Toast.makeText(this, "Error: Connect Bluetooth in Main Menu first!", Toast.LENGTH_LONG).show();
             return;
         }
-        
-        // Safety Check: Display Type Selected?
         if (EPaperDisplay.epdInd < 0 || EPaperDisplay.epdInd >= EPaperDisplay.getDisplays().length) {
             Toast.makeText(this, "Error: Select Display Type in Main Menu first!", Toast.LENGTH_LONG).show();
             return;
         }
-
         if (name == null || price == null) return;
         
-        // Get selected display dimensions
         EPaperDisplay selectedDisplay = EPaperDisplay.getDisplays()[EPaperDisplay.epdInd];
         int targetWidth = selectedDisplay.width;
         int targetHeight = selectedDisplay.height;
         
-        // SANITIZE DATA
-        // QR Code can handle more data, but let's keep it reasonable.
         String safeName = name.replace("|", " ").trim();
         if (safeName.length() > 64) safeName = safeName.substring(0, 64) + "...";
-        
         String safePrice = price.replace("|", "").trim();
         
-        String data = safeName + "|" + safePrice;
+        String displayText = safeName + "|" + safePrice;
 
         boolean rotate = false;
-        // If portrait mode, swap dimensions to generate a wider (higher resolution) layout, then rotate
         if (targetHeight > targetWidth) {
             int temp = targetWidth;
-            targetWidth = targetHeight; // Make it wide (e.g. 250)
-            targetHeight = temp;        // Make it short (e.g. 122)
+            targetWidth = targetHeight; 
+            targetHeight = temp;        
             rotate = true;
         }
 
         // 1. Generate QR Code Bitmap matched to display
-        Bitmap barcodeInfo = createBarcodeImage(data, targetWidth, targetHeight);
+        // Pass custom QR Content + Display Text separately
+        Bitmap barcodeInfo = createBarcodeImage(qrContent, displayText, targetWidth, targetHeight);
 
         if (barcodeInfo == null) {
              Toast.makeText(this, "Barcode gen failed", Toast.LENGTH_SHORT).show();
@@ -400,23 +448,14 @@ public class BrowserActivity extends AppCompatActivity {
         }
     }
     
-    private Bitmap createBarcodeImage(String content, int targetWidth, int targetHeight) {
+    private Bitmap createBarcodeImage(String qrContent, String displayText, int targetWidth, int targetHeight) {
         try {
-            // Use QR Code for robust data capacity
             MultiFormatWriter multiFormatWriter = new MultiFormatWriter();
             
-            // Layout: 
-            // If Landscape-ish (Width > Height): [Text] [QR]
-            // QR Size = Height (e.g. 122)
-            // Text Area = Width - Height (e.g. 250 - 122 = 128)
-            
+            // MAXIMIZED QR CODE
             int qrSize = Math.min(targetWidth, targetHeight);
-            if (qrSize > 250) qrSize = 250; 
             
-            // DEBUG: Force simple content if needed, but let's try to catch the error
-            // content = "DEBUG"; 
-            
-            BitMatrix bitMatrix = multiFormatWriter.encode(content, BarcodeFormat.QR_CODE, qrSize, qrSize);
+            BitMatrix bitMatrix = multiFormatWriter.encode(qrContent, BarcodeFormat.QR_CODE, qrSize, qrSize);
             BarcodeEncoder barcodeEncoder = new BarcodeEncoder();
             Bitmap qrBitmap = barcodeEncoder.createBitmap(bitMatrix);
             
@@ -424,53 +463,14 @@ public class BrowserActivity extends AppCompatActivity {
             Canvas canvas = new Canvas(combined);
             canvas.drawColor(Color.WHITE);
             
-            Paint paint = new Paint();
-            paint.setColor(Color.BLACK);
-            paint.setTextSize(18);
-            paint.setAntiAlias(true);
-             
-            // ROBUST SPLITTING (Fixes IndexOutOfBoundsException)
-            String[] parts = content.split("\\|", -1);
-            String displayName = parts.length > 0 ? parts[0] : content;
-            String displayPrice = parts.length > 1 ? parts[1] : "";
+            // CENTER THE QR CODE
+            int x = (targetWidth - qrSize) / 2;
+            int y = (targetHeight - qrSize) / 2;
             
-            // Draw Layout
-            if (targetWidth > targetHeight) {
-                // Landscape: Text Left, QR Right
-                // Draw QR aligned right
-                canvas.drawBitmap(qrBitmap, targetWidth - qrSize, 0, null);
-                
-                // Draw Text Left
-                // Simple wrapping or just 2 lines
-                canvas.drawText(displayPrice, 10, 30, paint); // Price Top
-                
-                // Name (wrap manually roughly)
-                paint.setTextSize(14);
-                int y = 60;
-                int lineWidth = targetWidth - qrSize - 10;
-                // crude wrapping
-                String[] words = displayName.split(" ");
-                String line = "";
-                for(String word : words) {
-                   if (paint.measureText(line + word) < lineWidth) {
-                       line += word + " ";
-                   } else {
-                       canvas.drawText(line, 10, y, paint);
-                       y += 18;
-                       line = word + " ";
-                   }
-                   if (y > targetHeight) break;
-                }
-                canvas.drawText(line, 10, y, paint);
-                
-            } else {
-               // Portrait: Text Top, QR Bottom
-               // Not implemented for now as we enforce Landscape rotation logic
-               // Fallback: Just center QR
-               int xPos = (targetWidth - qrBitmap.getWidth()) / 2;
-               canvas.drawBitmap(qrBitmap, xPos, targetHeight - qrSize, null);
-            }
-
+            canvas.drawBitmap(qrBitmap, x, y, null);
+            
+            // Text Removed completely
+            
             return combined;
         } catch (Exception e) {
             e.printStackTrace();
