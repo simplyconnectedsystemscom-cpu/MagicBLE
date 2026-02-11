@@ -21,16 +21,7 @@ export default async function handler(request, response) {
             // Fallback to "luggage" is already set
         }
 
-        // If this is the Voice Call Request (POST) from Twilio
-        if (request.method === 'POST') {
-            const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Answer/>
-    <Play>${`https://${request.headers.host}/api/voice?mode=audio`}</Play>
-</Response>`;
-            response.setHeader('Content-Type', 'text/xml');
-            return response.status(200).send(twiml);
-        }
+
 
         // If this is the Audio Request (GET/POST with mode=audio)
         if (request.query.mode === 'audio') {
@@ -81,6 +72,17 @@ export default async function handler(request, response) {
                 // Re-throwing to trigger the outer catch
                 throw elevenError;
             }
+        }
+
+        // If this is the Voice Call Request (POST) from Twilio
+        if (request.method === 'POST') {
+            const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Answer/>
+    <Play>${`https://${request.headers.host}/api/voice?mode=audio`}</Play>
+</Response>`;
+            response.setHeader('Content-Type', 'text/xml');
+            return response.status(200).send(twiml);
         }
 
         return response.status(400).json({ error: 'Invalid mode' });
