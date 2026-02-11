@@ -3,8 +3,8 @@ import axios from 'axios';
 import 'dotenv/config';
 
 // CONFIG: USER TO UPDATE THESE
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ? process.env.ELEVENLABS_API_KEY.trim() : "";
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ? process.env.ELEVENLABS_VOICE_ID.trim() : "";
 
 export default async function handler(request, response) {
     try {
@@ -89,6 +89,6 @@ export default async function handler(request, response) {
 
     } catch (error) {
         console.error("General Error:", error);
-        response.status(500).send("Error generating audio");
+        response.status(500).send(`Error generating audio: ${error.message}`);
     }
 }
